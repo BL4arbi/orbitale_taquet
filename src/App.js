@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Home, RotateCw, RotateCcw, Settings, Wifi, WifiOff, Zap } from 'lucide-react';
 
 const StepperController = () => {
@@ -20,34 +20,8 @@ const StepperController = () => {
   const [loading, setLoading] = useState(false);
   const [lastPing, setLastPing] = useState(null);
 
-  // Test de connexion/ping
-  const testConnection = async () => {
-    setLoading(true);
-    try {
-      const startTime = Date.now();
-      const response = await fetch(`http://${ESP32_IP}/api/ping`);
-      const pingTime = Date.now() - startTime;
-      
-      if (response.ok) {
-        const data = await response.json();
-        setIsConnected(true);
-        setLastPing(pingTime);
-        console.log('Connexion OK - Ping:', pingTime + 'ms', data);
-        // Récupérer le statut immédiatement après connexion
-        updateStatus();
-        return true;
-      }
-    } catch (error) {
-      console.error('Erreur ping:', error);
-    }
-    setIsConnected(false);
-    setLastPing(null);
-    setLoading(false);
-    return false;
-  };
-
-  // Appel API générique
-  const apiCall = async (endpoint, method = 'GET', data = null) => {
+  // Appel API générique (déplacé avant pour éviter les warnings)
+  const apiCall = useCallback(async (endpoint, method = 'GET', data = null) => {
     if (!isConnected && endpoint !== 'ping') {
       alert('ESP32 non connecté! Testez la connexion d\'abord.');
       return null;
@@ -64,11 +38,6 @@ const StepperController = () => {
       const response = await fetch(`http://${ESP32_IP}/api/${endpoint}`, config);
       const result = await response.json();
       
-      // Rafraîchir le statut après chaque action
-      if (endpoint !== 'status' && endpoint !== 'ping') {
-        setTimeout(updateStatus, 100);
-      }
-      
       return result;
     } catch (error) {
       console.error('Erreur API:', error);
@@ -77,42 +46,87 @@ const StepperController = () => {
     } finally {
       if (endpoint !== 'ping') setLoading(false);
     }
-  };
+  }, [isConnected, ESP32_IP]);
 
-  // Mise à jour du statut
-  const updateStatus = async () => {
+  // Mise à jour du statut (useCallback pour éviter les warnings)
+  const updateStatus = useCallback(async () => {
     if (isConnected) {
       const newStatus = await apiCall('status');
       if (newStatus) {
         setStatus(newStatus);
       }
     }
-  };
+  }, [isConnected, apiCall]);
+
+  // Test de connexion/ping (useCallback pour éviter les warnings)
+  const testConnection = useCallback(async () => {
+    setLoading(true);
+    try {
+      const startTime = Date.now();
+      const response = await fetch(`http://${ESP32_IP}/api/ping`);
+      const pingTime = Date.now() - startTime;
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIsConnected(true);
+        setLastPing(pingTime);
+        console.log('Connexion OK - Ping:', pingTime + 'ms', data);
+        // Récupérer le statut immédiatement après connexion
+        setTimeout(() => updateStatus(), 100);
+        return true;
+      }
+    } catch (error) {
+      console.error('Erreur ping:', error);
+    }
+    setIsConnected(false);
+    setLastPing(null);
+    setLoading(false);
+    return false;
+  }, [ESP32_IP, updateStatus]);
 
   // Actions du moteur
-  const stopMotor = () => apiCall('stop', 'POST');
-  const homeMotor = () => apiCall('home', 'POST');
+  const stopMotor = useCallback(() => {
+    apiCall('stop', 'POST').then(() => {
+      setTimeout(updateStatus, 100);
+    });
+  }, [apiCall, updateStatus]);
+
+  const homeMotor = useCallback(() => {
+    apiCall('home', 'POST').then(() => {
+      setTimeout(updateStatus, 100);
+    });
+  }, [apiCall, updateStatus]);
   
-  const moveDistance = () => {
+  const moveDistance = useCallback(() => {
     const distance = settings.distance;
     apiCall('move', 'POST', { 
       distance: distance, 
       speed: settings.speed,
       direction: distance >= 0 ? 1 : 0
+    }).then(() => {
+      setTimeout(updateStatus, 100);
     });
-  };
+  }, [settings.distance, settings.speed, apiCall, updateStatus]);
   
-  const moveForward = () => apiCall('move', 'POST', { 
-    continuous: true, 
-    speed: settings.speed, 
-    direction: 1 
-  });
+  const moveForward = useCallback(() => {
+    apiCall('move', 'POST', { 
+      continuous: true, 
+      speed: settings.speed, 
+      direction: 1 
+    }).then(() => {
+      setTimeout(updateStatus, 100);
+    });
+  }, [settings.speed, apiCall, updateStatus]);
   
-  const moveBackward = () => apiCall('move', 'POST', { 
-    continuous: true, 
-    speed: settings.speed, 
-    direction: 0 
-  });
+  const moveBackward = useCallback(() => {
+    apiCall('move', 'POST', { 
+      continuous: true, 
+      speed: settings.speed, 
+      direction: 0 
+    }).then(() => {
+      setTimeout(updateStatus, 100);
+    });
+  }, [settings.speed, apiCall, updateStatus]);
 
   // Effet pour la mise à jour automatique du statut
   useEffect(() => {
@@ -123,12 +137,12 @@ const StepperController = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isConnected]);
+  }, [isConnected, updateStatus]);
 
   // Test de connexion au démarrage
   useEffect(() => {
     testConnection();
-  }, []);
+  }, [testConnection]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
