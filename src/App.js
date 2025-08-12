@@ -3,7 +3,7 @@ import { Play, Square, Home, RotateCw, RotateCcw, Settings, Wifi, WifiOff, Zap }
 
 const StepperController = () => {
   // IP FIXE de l'ESP32
-  const ESP32_IP = '192.168.1.100';
+  const ESP32_IP = '192.168.4.1';
   
   const [isConnected, setIsConnected] = useState(false);
   const [status, setStatus] = useState({
@@ -363,3 +363,4 @@ const StepperController = () => {
 };
 
 export default StepperController;
+
